@@ -1,0 +1,17 @@
+{
+  "weatherApi": {
+    "provider": "openweather",
+    "timeout": 10000,
+    "cacheDuration": 1800000
+  },
+  "metrics": {
+    "temperature": true,
+    "precipitation": true,
+    "uvIndex": true,
+    "wind": true
+  },
+  "features": {
+    "geolocation": true,
+    "historicalData": false
+  }
+}
