@@ -1,0 +1,19 @@
+# Snyk (https://snyk.io) policy file
+version: v1.25.0
+ignore:
+  # Temporary ignores can be added here
+  # Example: vulnerability in a dependency
+  # patch: Some explanation for ignoring
+  # SNYK-JS-LODASH-567746:
+  #   - lodash@4.17.21
+
+# Defines which packages should be scanned and how to handle vulnerabilities
+packages:
+  'package.json':
+    # Custom configuration for package scanning
+    ignore: []
+    patch: []
+
+protect:
+  # Enable automatic updates
+  autoUpdatePatch: true
