@@ -1,11 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ComposedChart, Area, Line, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Sun } from 'lucide-react';
 
 const WeatherChart = ({ 
   viewMode, 
-  chartData, 
+  currentData, 
   metrics, 
+  historicalRanges, 
   showHistoricalRange, 
   showHistoricalAvg, 
   showAnomalies, 
@@ -45,6 +45,73 @@ const WeatherChart = ({
     );
   };
 
+  // Chart data preparation
+  const chartData = useMemo(() => {
+    if (!currentData || !currentData.length) return [];
+    
+    if (viewMode === 'Historical') {
+      return currentData.map(item => ({
+        name: item.year.toString(),
+        temperature: metrics.temperature ? item.temp : null,
+        precipitation: metrics.precipitation ? item.precipitation : null,
+        uvIndex: metrics.uvIndex ? (item.uvIndex * 10) : null, // Scale for better visibility
+        windSpeed: metrics.wind ? item.wind.speed : null,
+        id: item.year.toString(),
+        isHottest: item.isHottest,
+        isColdest: item.isColdest,
+        isWettest: item.isWettest,
+        isDriest: item.isDriest,
+        isWindiest: item.isWindiest
+      }));
+    }
+    
+    if (viewMode === '7-Day') {
+      // Enhanced chart data for 7-day view with historical context
+      return currentData.map((day, index) => {
+        const histData = historicalRanges[index] || {};
+        
+        return {
+          name: day.day || '',
+          // Main forecast data
+          temperature: day.tempHigh || 0,
+          precipitation: day.precipitation?.chance || 0,
+          uvIndex: (day.uvIndex || 0) * 10, // Scale for better visibility
+          windSpeed: metrics.wind ? day.wind.speed : null,
+          windDirection: day.wind.direction,
+          id: day.id || '',
+          // Historical ranges for temperature
+          tempRangeMin: histData.tempRange?.min,
+          tempRangeMax: histData.tempRange?.max,
+          tempAvg: histData.tempRange?.avg,
+          // Historical ranges for precipitation
+          precipRangeMin: histData.precipRange?.min,
+          precipRangeMax: histData.precipRange?.max,
+          precipAvg: histData.precipRange?.avg,
+          // Anomaly data
+          tempAnomaly: histData.anomalies?.temp,
+          precipAnomaly: histData.anomalies?.precip,
+          uvAnomaly: histData.anomalies?.uv,
+          tempAnomalyType: histData.anomalies?.tempType,
+          precipAnomalyType: histData.anomalies?.precipType,
+          uvAnomalyType: histData.anomalies?.uvType,
+          // Stats
+          stats: histData.stats
+        };
+      });
+    }
+    
+    // Hourly view data
+    return currentData.map(day => ({
+      name: day.day || '',
+      temperature: day.temperature || 0,
+      precipitation: day.precipitation?.chance || 0,
+      uvIndex: (day.uvIndex || 0) * 10, // Scale for better visibility
+      windSpeed: metrics.wind ? day.wind.speed : null,
+      windDirection: day.wind?.direction,
+      id: day.id || ''
+    }));
+  }, [currentData, viewMode, metrics, historicalRanges]);
+
   return (
     <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow-sm p-5 border border-gray-100/50">
       <div className="flex justify-between items-center mb-4">
@@ -61,28 +128,12 @@ const WeatherChart = ({
         {viewMode === '7-Day' && showAnomalies && (
           <div className="flex flex-wrap gap-2 text-xs">
             <div className="flex items-center">
-              <svg width="12" height="12" className="mr-1">
-                <polygon points="6,0 12,10 0,10" fill="#fecaca" stroke="#f87171" strokeWidth="1.5" />
-              </svg>
+              <span className="inline-block w-3 h-3 bg-red-200 rounded-full mr-1"></span>
               <span className="text-gray-600">Hot</span>
             </div>
             <div className="flex items-center">
-              <svg width="12" height="12" className="mr-1">
-                <polygon points="0,2 12,2 6,12" fill="#bfdbfe" stroke="#60a5fa" strokeWidth="1.5" />
-              </svg>
+              <span className="inline-block w-3 h-3 bg-blue-200 rounded-full mr-1"></span>
               <span className="text-gray-600">Cold</span>
-            </div>
-            <div className="flex items-center">
-              <svg width="12" height="12" className="mr-1">
-                <rect x="1" y="1" width="10" height="10" fill="#bfdbfe" stroke="#60a5fa" strokeWidth="1.5" />
-              </svg>
-              <span className="text-gray-600">Wet</span>
-            </div>
-            <div className="flex items-center">
-              <svg width="12" height="12" className="mr-1">
-                <polygon points="6,0 12,6 6,12 0,6" fill="#fef3c7" stroke="#fbbf24" strokeWidth="1.5" />
-              </svg>
-              <span className="text-gray-600">Dry</span>
             </div>
           </div>
         )}
@@ -117,14 +168,6 @@ const WeatherChart = ({
               <linearGradient id="windGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#10b981" stopOpacity={0.6}/>
                 <stop offset="95%" stopColor="#d1fae5" stopOpacity={0.2}/>
-              </linearGradient>
-              <linearGradient id="tempRangeGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#fdba74" stopOpacity={0.12}/>
-                <stop offset="95%" stopColor="#fed7aa" stopOpacity={0.04}/>
-              </linearGradient>
-              <linearGradient id="precipRangeGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#93c5fd" stopOpacity={0.12}/>
-                <stop offset="95%" stopColor="#bfdbfe" stopOpacity={0.04}/>
               </linearGradient>
             </defs>
             
@@ -176,224 +219,34 @@ const WeatherChart = ({
               />
             )}
             
-            {/* Historical temperature range (only in 7-day view) */}
-            {viewMode === '7-Day' && metrics.temperature && showHistoricalRange && (
-              <Area
-                type="monotone"
-                dataKey="tempRangeMax"
-                stackId="tempRange"
-                stroke="none"
-                fill="url(#tempRangeGradient)"
-                yAxisId="temp"
-              />
-            )}
-            
-            {/* Historical precipitation range (only in 7-day view) */}
-            {viewMode === '7-Day' && metrics.precipitation && showHistoricalRange && (
-              <Area
-                type="monotone"
-                dataKey="precipRangeMax"
-                stackId="precipRange"
-                stroke="none"
-                fill="url(#precipRangeGradient)"
-                yAxisId="percent"
-              />
-            )}
-            
-            {/* Historical average temperature line */}
-            {viewMode === '7-Day' && metrics.temperature && showHistoricalAvg && (
-              <Line
-                type="monotone"
-                dataKey="tempAvg"
-                stroke="#f97316"
-                strokeDasharray="5 5"
-                strokeWidth={1.5}
-                dot={false}
-                yAxisId="temp"
-                name="Avg Temp"
-                unit="°F"
-              />
-            )}
-            
-            {/* Historical average precipitation line */}
-            {viewMode === '7-Day' && metrics.precipitation && showHistoricalAvg && (
-              <Line
-                type="monotone"
-                dataKey="precipAvg"
-                stroke="#3b82f6"
-                strokeDasharray="5 5"
-                strokeWidth={1.5}
-                dot={false}
-                yAxisId="percent"
-                name="Avg Precip"
-                unit="%"
-              />
-            )}
-            
             {/* Main temperature data */}
             {metrics.temperature && (
-              viewMode === 'Historical' ? (
-                <Bar
-                  dataKey="temperature"
-                  fill="url(#tempGradient)"
-                  stroke="#f97316"
-                  strokeWidth={1}
-                  yAxisId="temp"
-                  name="Temperature"
-                  unit="°F"
-                  animationDuration={800}
-                  animationEasing="ease-out"
-                  radius={[4, 4, 0, 0]}
-                />
-              ) : (
-                <Area 
-                  type="monotone" 
-                  dataKey="temperature" 
-                  stroke="#f97316" 
-                  strokeWidth={2}
-                  fill="url(#tempGradient)"
-                  yAxisId="temp"
-                  name="Temperature" 
-                  unit="°F"
-                  activeDot={{ r: 6, strokeWidth: 1, stroke: '#fff' }}
-                  animationDuration={800}
-                  animationEasing="ease-out"
-                  dot={(props) => {
-                    // Custom dot for anomaly detection
-                    if (viewMode === '7-Day' && showAnomalies) {
-                      const dataIndex = props.index;
-                      const isAnomaly = chartData[dataIndex]?.tempAnomaly;
-                      const anomalyType = isAnomaly ? chartData[dataIndex]?.tempAnomalyType : null;
-                      
-                      if (isAnomaly) {
-                        // Using different shapes based on anomaly type for better accessibility
-                        if (anomalyType === 'hot') {
-                          // Triangle pointing up for hot anomalies (red)
-                          return (
-                            <svg x={props.cx - 6} y={props.cy - 6} width={12} height={12} role="img" aria-label="Hot temperature anomaly">
-                              <polygon 
-                                points="6,0 12,10 0,10" 
-                                fill="#fecaca" 
-                                stroke="#f87171" 
-                                strokeWidth="1.5"
-                              />
-                            </svg>
-                          );
-                        } else {
-                          // Triangle pointing down for cold anomalies (blue)
-                          return (
-                            <svg x={props.cx - 6} y={props.cy - 6} width={12} height={12} role="img" aria-label="Cold temperature anomaly">
-                              <polygon 
-                                points="0,2 12,2 6,12" 
-                                fill="#bfdbfe" 
-                                stroke="#60a5fa" 
-                                strokeWidth="1.5"
-                              />
-                            </svg>
-                          );
-                        }
-                      }
-                    }
-                    
-                    // Default dot
-                    return (
-                      <circle
-                        cx={props.cx}
-                        cy={props.cy}
-                        r={4}
-                        fill="#f97316"
-                        stroke="#FFFFFF"
-                        strokeWidth={1}
-                      />
-                    );
-                  }}
-                />
-              )
+              <Area 
+                type="monotone" 
+                dataKey="temperature" 
+                stroke="#f97316" 
+                strokeWidth={2}
+                fill="url(#tempGradient)"
+                yAxisId="temp"
+                name="Temperature" 
+                unit="°F"
+                activeDot={{ r: 6, strokeWidth: 1, stroke: '#fff' }}
+              />
             )}
             
             {/* Main precipitation data */}
             {metrics.precipitation && (
-              viewMode === 'Historical' ? (
-                <Bar
-                  dataKey="precipitation"
-                  fill="url(#precipGradient)"
-                  stroke="#3b82f6"
-                  strokeWidth={1}
-                  yAxisId="percent"
-                  name="Precipitation"
-                  unit="%"
-                  animationDuration={1000}
-                  animationBegin={300}
-                  animationEasing="ease-in-out"
-                />
-              ) : (
-                <Area 
-                  type="monotone" 
-                  dataKey="precipitation" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  fill="url(#precipGradient)"
-                  yAxisId="percent"
-                  name="Precipitation" 
-                  unit="%"
-                  activeDot={{ r: 6, strokeWidth: 1, stroke: '#fff' }}
-                  animationDuration={1000}
-                  animationBegin={300}
-                  animationEasing="ease-in-out"
-                  dot={(props) => {
-                    // Custom dot for anomaly detection
-                    if (viewMode === '7-Day' && showAnomalies) {
-                      const dataIndex = props.index;
-                      const isAnomaly = chartData[dataIndex]?.precipAnomaly;
-                      const anomalyType = isAnomaly ? chartData[dataIndex]?.precipAnomalyType : null;
-                      
-                      if (isAnomaly) {
-                        // Using different shapes for precipitation anomalies
-                        if (anomalyType === 'wet') {
-                          // Square for wet anomalies (blue)
-                          return (
-                            <svg x={props.cx - 6} y={props.cy - 6} width={12} height={12} role="img" aria-label="Unusually wet precipitation anomaly">
-                              <rect
-                                x="1"
-                                y="1"
-                                width="10"
-                                height="10"
-                                fill="#bfdbfe"
-                                stroke="#60a5fa"
-                                strokeWidth="1.5"
-                              />
-                            </svg>
-                          );
-                        } else {
-                          // Diamond for dry anomalies (amber)
-                          return (
-                            <svg x={props.cx - 6} y={props.cy - 6} width={12} height={12} role="img" aria-label="Unusually dry precipitation anomaly">
-                              <polygon
-                                points="6,0 12,6 6,12 0,6"
-                                fill="#fef3c7"
-                                stroke="#fbbf24"
-                                strokeWidth="1.5"
-                              />
-                            </svg>
-                          );
-                        }
-                      }
-                    }
-                    
-                    // Default dot
-                    return (
-                      <circle
-                        cx={props.cx}
-                        cy={props.cy}
-                        r={4}
-                        fill="#3b82f6"
-                        stroke="#FFFFFF"
-                        strokeWidth={1}
-                      />
-                    );
-                  }}
-                />
-              )
+              <Area 
+                type="monotone" 
+                dataKey="precipitation" 
+                stroke="#3b82f6" 
+                strokeWidth={2}
+                fill="url(#precipGradient)"
+                yAxisId="percent"
+                name="Precipitation" 
+                unit="%"
+                activeDot={{ r: 6, strokeWidth: 1, stroke: '#fff' }}
+              />
             )}
             
             {/* UV index data */}
@@ -408,44 +261,22 @@ const WeatherChart = ({
                 yAxisId="percent"
                 name="UV Index" 
                 unit=""
-                animationDuration={1000}
-                animationBegin={600}
-                animationEasing="ease-in-out"
               />
             )}
             
             {/* Wind speed data */}
             {metrics.wind && (
-              viewMode === 'Historical' ? (
-                <Bar
-                  dataKey="windSpeed"
-                  fill="url(#windGradient)"
-                  stroke="#10b981"
-                  strokeWidth={1}
-                  yAxisId="wind"
-                  name="Wind Speed"
-                  unit=" mph"
-                  animationDuration={1200}
-                  animationBegin={900}
-                  animationEasing="ease-in-out"
-                  radius={[4, 4, 0, 0]}
-                />
-              ) : (
-                <Line 
-                  type="monotone" 
-                  dataKey="windSpeed"
-                  stroke="#10b981" 
-                  strokeWidth={2}
-                  dot={{ r: 4, fill: '#10b981', strokeWidth: 1, stroke: '#fff' }}
-                  activeDot={{ r: 6, fill: '#10b981', strokeWidth: 1, stroke: '#fff' }}
-                  yAxisId="wind"
-                  name="Wind Speed" 
-                  unit=" mph"
-                  animationDuration={1200}
-                  animationBegin={900}
-                  animationEasing="ease-in-out"
-                />
-              )
+              <Line 
+                type="monotone" 
+                dataKey="windSpeed"
+                stroke="#10b981" 
+                strokeWidth={2}
+                dot={{ r: 4, fill: '#10b981', strokeWidth: 1, stroke: '#fff' }}
+                activeDot={{ r: 6, fill: '#10b981', strokeWidth: 1, stroke: '#fff' }}
+                yAxisId="wind"
+                name="Wind Speed" 
+                unit=" mph"
+              />
             )}
             
             <Tooltip content={SimplifiedTooltip} wrapperStyle={{ outline: 'none' }} />
