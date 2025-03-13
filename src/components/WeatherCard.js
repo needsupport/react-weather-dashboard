@@ -8,10 +8,21 @@ const WeatherCard = ({
   selectedDay, 
   setSelectedDay, 
   setShowDetails,
-  renderWeatherIcon,
   unit,
   metrics
 }) => {
+  const renderWeatherIcon = (iconType, size = 24) => {
+    if (!iconType) return null;
+    
+    const color = iconType === 'sun' ? '#FBBF24' : 
+                  iconType === 'rain' ? '#3B82F6' : 
+                  '#6B7280';
+                  
+    return iconType === 'rain' ? <Droplet size={size} style={{ color }} aria-label="Rain" /> :
+           iconType === 'sun' ? <Sun size={size} style={{ color }} aria-label="Sunny" /> :
+           <Droplet size={size} style={{ color }} aria-label="Drizzle" />;
+  };
+
   return (
     <div 
       key={day.id} 
