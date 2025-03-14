@@ -3,8 +3,11 @@ import PropTypes from 'prop-types';
 import WeatherHeader from './WeatherHeader';
 import WeatherCard from './WeatherCard';
 import WeatherChart from './WeatherChart';
+import ConfigurationPanel from './ConfigurationPanel';
+import { Settings } from 'lucide-react';
 import { 
-  fetchRealWeatherData
+  fetchRealWeatherData,
+  getServerConfig
 } from './weatherDataUtils';
 
 /**
@@ -31,13 +34,19 @@ const initialState = {
     isRefreshing: false,
     selectedDay: null,
     showDetails: false,
-    error: null
+    error: null,
+    showConfigPanel: false
   },
   preferences: { 
     unit: 'F',
     showHistoricalRange: true,
     showAnomalies: true,
     showHistoricalAvg: true
+  },
+  config: {
+    isConfigured: false,
+    serverUrl: 'http://localhost:3001',
+    apiUrl: 'https://api.openweathermap.org/data/2.5/weather'
   }
 };
 
@@ -79,6 +88,8 @@ function reducer(state, action) {
           showDetails: action.payload !== null
         } 
       };
+    case 'SET_CONFIG':
+      return { ...state, config: { ...state.config, ...action.payload } };
     default:
       return state;
   }
@@ -99,8 +110,34 @@ const WeatherDashboard = () => {
     weatherData, 
     ui, 
     preferences,
-    viewMode
+    viewMode,
+    config
   } = state;
+
+  // Check server configuration on mount
+  useEffect(() => {
+    const checkServerConfig = async () => {
+      try {
+        const serverConfig = await getServerConfig();
+        dispatch({ 
+          type: 'SET_CONFIG', 
+          payload: { 
+            isConfigured: Boolean(serverConfig.apiUrl),
+            apiUrl: serverConfig.apiUrl
+          } 
+        });
+      } catch (error) {
+        console.warn('Could not get server config:', error);
+        // Show configuration panel if server is not reachable
+        dispatch({ 
+          type: 'SET_UI_STATE', 
+          payload: { showConfigPanel: true } 
+        });
+      }
+    };
+    
+    checkServerConfig();
+  }, []);
 
   // Fetch weather data when location changes
   useEffect(() => {
@@ -138,13 +175,16 @@ const WeatherDashboard = () => {
       }
     };
 
-    fetchData();
+    // Only fetch if configured
+    if (config.isConfigured) {
+      fetchData();
+    }
 
     return () => {
       isMounted = false;
       abortController.abort();
     };
-  }, [location]);
+  }, [location, config.isConfigured]);
 
   /**
    * Handles geolocation request
@@ -292,6 +332,34 @@ const WeatherDashboard = () => {
       });
   }, [location]);
 
+  /**
+   * Shows the configuration panel
+   */
+  const showConfigPanel = useCallback(() => {
+    dispatch({ 
+      type: 'SET_UI_STATE', 
+      payload: { showConfigPanel: true } 
+    });
+  }, []);
+
+  /**
+   * Handles configuration save
+   */
+  const handleConfigSaved = useCallback((newConfig) => {
+    dispatch({ 
+      type: 'SET_CONFIG', 
+      payload: newConfig 
+    });
+    dispatch({ 
+      type: 'SET_UI_STATE', 
+      payload: { showConfigPanel: false } 
+    });
+    // Trigger a data refresh
+    if (newConfig.isConfigured) {
+      handleRefresh();
+    }
+  }, [handleRefresh]);
+
   return (
     <div className="weather-dashboard p-4 max-w-6xl mx-auto">
       {ui.error && (
@@ -309,6 +377,28 @@ const WeatherDashboard = () => {
         </div>
       )}
 
+      {!config.isConfigured && !ui.showConfigPanel && (
+        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4 flex justify-between items-center">
+          <span>Weather API is not configured. Please click the button to set it up.</span>
+          <button 
+            onClick={showConfigPanel}
+            className="bg-yellow-200 text-yellow-800 font-semibold py-1 px-4 border border-yellow-500 rounded hover:bg-yellow-300 flex items-center"
+          >
+            <Settings size={16} className="mr-2" />
+            Configure API
+          </button>
+        </div>
+      )}
+
+      <ConfigurationPanel 
+        isVisible={ui.showConfigPanel}
+        onClose={() => dispatch({ 
+          type: 'SET_UI_STATE', 
+          payload: { showConfigPanel: false } 
+        })}
+        onConfigSaved={handleConfigSaved}
+      />
+
       {ui.isLoading ? (
         <div className="flex justify-center items-center h-64">
           <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
@@ -316,6 +406,17 @@ const WeatherDashboard = () => {
         </div>
       ) : (
         <>
+          <div className="flex justify-between items-center mb-4">
+            <h1 className="text-2xl font-bold">Weather Dashboard</h1>
+            <button
+              onClick={showConfigPanel}
+              className="bg-gray-100 text-gray-700 font-semibold py-1 px-3 border border-gray-300 rounded hover:bg-gray-200 flex items-center"
+            >
+              <Settings size={16} className="mr-2" />
+              Settings
+            </button>
+          </div>
+
           <WeatherHeader 
             dailyData={weatherData.daily}
             location={location}
@@ -335,7 +436,7 @@ const WeatherDashboard = () => {
             />
           </div>
           
-          {weatherData.daily && weatherData.daily.length > 0 && (
+          {weatherData.daily && weatherData.daily.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-6">
               {weatherData.daily.map(day => (
                 <WeatherCard
@@ -349,6 +450,20 @@ const WeatherDashboard = () => {
                   metrics={metrics}
                 />
               ))}
+            </div>
+          ) : config.isConfigured ? (
+            <div className="text-center p-8 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-gray-600">No weather data available. Try refreshing or changing location.</p>
+            </div>
+          ) : (
+            <div className="text-center p-8 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-gray-600">Please configure the Weather API to view weather data.</p>
+              <button 
+                onClick={showConfigPanel}
+                className="mt-4 bg-blue-500 text-white font-semibold py-2 px-4 rounded hover:bg-blue-600"
+              >
+                Configure API
+              </button>
             </div>
           )}
         </>
