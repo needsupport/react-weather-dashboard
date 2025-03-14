@@ -274,6 +274,49 @@ app.get('/api/weather/gridpoints', cache(CONFIG.CACHE_DURATION), getLimiter(), a
   }
 });
 
+// NWS forecast discussion endpoint
+app.get('/api/weather/discussion', cache('30 minutes'), getLimiter(), async (req, res) => {
+  try {
+    const { office } = req.query;
+    
+    if (!office) {
+      return res.status(400).json({ error: 'Weather office code is required' });
+    }
+
+    // Fetch the product with the AFD (Area Forecast Discussion) identifier
+    const response = await axios.get(`${CONFIG.WEATHER_API_URL}/products/types/AFD/locations/${office}`, {
+      headers: getNWSHeaders(),
+      timeout: 10000
+    });
+
+    if (!response.data || !response.data.features || response.data.features.length === 0) {
+      return res.status(404).json({ error: 'No forecast discussion found for this office' });
+    }
+
+    // Get the latest discussion product
+    const latestProductId = response.data.features[0].properties.id;
+    
+    // Fetch the actual discussion text
+    const discussionResponse = await axios.get(`${CONFIG.WEATHER_API_URL}/products/${latestProductId}`, {
+      headers: getNWSHeaders(),
+      timeout: 10000
+    });
+
+    res.json(discussionResponse.data);
+  } catch (error) {
+    console.error('Weather API error:', error.message);
+    
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: `Weather service error: ${error.response.status}`,
+        message: error.response?.data?.detail || 'Unknown error'
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch forecast discussion' });
+  }
+});
+
 // Legacy endpoint for OpenWeather API
 app.get('/api/weather', (req, res, next) => {
   // Apply dynamic cache configuration
