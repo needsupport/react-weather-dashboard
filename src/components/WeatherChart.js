@@ -1,15 +1,28 @@
 import React, { useMemo } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import PropTypes from 'prop-types';
 
+/**
+ * WeatherChart - Renders weather data visualizations
+ * 
+ * @component
+ * @param {Object} props
+ * @param {Array} props.data - Array of weather data objects
+ * @param {Object} props.metrics - Object indicating which metrics to display
+ * @returns {JSX.Element}
+ */
 const WeatherChart = React.memo(({ data, metrics }) => {
   const processedData = useMemo(() => {
-    if (!data || !data.temperature) return [];
+    if (!data || !Array.isArray(data) || data.length === 0) return [];
     
-    return [{
-      temperature: data.temperature,
-      humidity: data.humidity,
-      windSpeed: data.windSpeed
-    }];
+    // Transform the data for the chart
+    return data.map(day => ({
+      name: day.day,
+      temperature: day.tempHigh,
+      precipitation: day.precipitation?.chance || 0,
+      windSpeed: day.wind?.speed || 0,
+      uvIndex: day.uvIndex || 0
+    }));
   }, [data]);
 
   return (
@@ -37,11 +50,49 @@ const WeatherChart = React.memo(({ data, metrics }) => {
             name="Wind Speed" 
           />
         )}
+
+        {metrics.precipitation && (
+          <Line 
+            type="monotone" 
+            dataKey="precipitation" 
+            stroke="#ffc658" 
+            name="Precipitation %" 
+          />
+        )}
+
+        {metrics.uvIndex && (
+          <Line 
+            type="monotone" 
+            dataKey="uvIndex" 
+            stroke="#ff8042" 
+            name="UV Index" 
+          />
+        )}
       </LineChart>
     </ResponsiveContainer>
   );
 });
 
 WeatherChart.displayName = 'WeatherChart';
+
+WeatherChart.propTypes = {
+  data: PropTypes.array,
+  metrics: PropTypes.shape({
+    temperature: PropTypes.bool,
+    precipitation: PropTypes.bool, 
+    uvIndex: PropTypes.bool,
+    wind: PropTypes.bool
+  })
+};
+
+WeatherChart.defaultProps = {
+  data: [],
+  metrics: {
+    temperature: true,
+    precipitation: true,
+    uvIndex: true,
+    wind: true
+  }
+};
 
 export default WeatherChart;
