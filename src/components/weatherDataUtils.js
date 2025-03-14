@@ -86,9 +86,10 @@ export async function getServerConfig() {
 /**
  * Fetches weather data from National Weather Service API
  * 
- * This is a two-step process:
- * 1. Get grid information from /points endpoint
- * 2. Use returned forecast URL to get forecast data
+ * This is a multi-step process:
+ * 1. Get metadata from /points endpoint
+ * 2. Use returned URLs to fetch forecast, hourly, and observation data
+ * 3. Process and combine data into a unified format
  * 
  * @param {string} location - Location coordinates "lat,lon"
  * @returns {Promise<Object>} - Weather data object
@@ -101,7 +102,7 @@ async function fetchNWSWeatherData(location) {
   try {
     const [latitude, longitude] = location.split(',');
     
-    // Step 1: Get grid information
+    // Step 1: Get metadata from points endpoint
     const pointsResponse = await axios.get(`${CONFIG.SERVER_URL}/api/weather/points`, {
       params: { latitude, longitude },
       timeout: CONFIG.TIMEOUT
@@ -111,17 +112,60 @@ async function fetchNWSWeatherData(location) {
       throw new WeatherError('Invalid response from NWS Points API', 'INVALID_RESPONSE');
     }
 
-    // Step 2: Get forecast using the URL from the points response
-    const forecastUrl = pointsResponse.data.properties.forecast;
+    const properties = pointsResponse.data.properties;
     
+    // Get URLs for various endpoints from the metadata
+    const forecastUrl = properties.forecast;
+    const forecastHourlyUrl = properties.forecastHourly;
+    const forecastGridDataUrl = properties.forecastGridData;
+    const observationStationsUrl = properties.observationStations;
+
+    // Check if we have the required forecast URL
     if (!forecastUrl) {
       throw new WeatherError('Forecast URL not found in NWS response', 'MISSING_DATA');
     }
 
+    // Step 2: Get standard forecast data
     const forecastResponse = await axios.get(`${CONFIG.SERVER_URL}/api/weather/forecast`, {
       params: { endpoint: forecastUrl },
       timeout: CONFIG.TIMEOUT
     });
+
+    // Step 3: Get hourly forecast data if available
+    let hourlyForecastData = [];
+    if (forecastHourlyUrl) {
+      try {
+        const hourlyResponse = await axios.get(`${CONFIG.SERVER_URL}/api/weather/forecast`, {
+          params: { endpoint: forecastHourlyUrl },
+          timeout: CONFIG.TIMEOUT
+        });
+        
+        if (hourlyResponse.data && hourlyResponse.data.properties && hourlyResponse.data.properties.periods) {
+          hourlyForecastData = hourlyResponse.data.properties.periods;
+        }
+      } catch (error) {
+        console.warn('Error fetching hourly forecast:', error);
+        // Continue with the regular forecast if hourly fails
+      }
+    }
+
+    // Step 4: Get gridpoint data for additional weather parameters if available
+    let gridData = {};
+    if (forecastGridDataUrl) {
+      try {
+        const gridResponse = await axios.get(`${CONFIG.SERVER_URL}/api/weather/forecast`, {
+          params: { endpoint: forecastGridDataUrl },
+          timeout: CONFIG.TIMEOUT
+        });
+        
+        if (gridResponse.data && gridResponse.data.properties) {
+          gridData = gridResponse.data.properties;
+        }
+      } catch (error) {
+        console.warn('Error fetching grid data:', error);
+        // Continue without grid data if it fails
+      }
+    }
 
     if (!forecastResponse.data || !forecastResponse.data.properties || !forecastResponse.data.properties.periods) {
       throw new WeatherError('Invalid response from NWS Forecast API', 'INVALID_RESPONSE');
@@ -129,7 +173,7 @@ async function fetchNWSWeatherData(location) {
 
     // Transform NWS forecast data to match app's expected format
     const periods = forecastResponse.data.properties.periods;
-    const location = pointsResponse.data.properties.relativeLocation?.properties || { city: "Unknown", state: "Unknown" };
+    const location = properties.relativeLocation?.properties || { city: "Unknown", state: "Unknown" };
     
     // Create daily forecast from periods (NWS provides forecast periods that alternate day/night)
     const dailyForecasts = [];
@@ -147,6 +191,12 @@ async function fetchNWSWeatherData(location) {
       const date = new Date(period.startTime);
       const dayOfWeek = days[date.getDay()];
       
+      // Extract additional data from grid data if available
+      const dewPoint = gridData.dewpoint?.values?.[i]?.value || null;
+      const relativeHumidity = gridData.relativeHumidity?.values?.[i]?.value || null;
+      const pressure = gridData.pressure?.values?.[i]?.value || null;
+      const visibility = gridData.visibility?.values?.[i]?.value || null;
+      
       dailyForecasts.push({
         id: `day-${i}`,
         day: period.name.includes('Night') ? period.name.replace(' Night', '') : period.name,
@@ -155,8 +205,13 @@ async function fetchNWSWeatherData(location) {
         tempHigh: period.temperature,
         tempLow: nightPeriod ? nightPeriod.temperature : period.temperature - 10, // Fallback if no night data
         precipitation: { 
-          chance: period.probabilityOfPrecipitation?.value || 0
+          chance: period.probabilityOfPrecipitation?.value || 0,
+          type: getWeatherType(period.shortForecast)
         },
+        dewPoint: dewPoint,
+        relativeHumidity: relativeHumidity,
+        pressure: pressure,
+        visibility: visibility,
         uvIndex: 5, // NWS doesn't provide UV index directly
         wind: { 
           speed: parseWindSpeed(period.windSpeed), 
@@ -170,13 +225,41 @@ async function fetchNWSWeatherData(location) {
       // Only take the first 7 days
       if (dailyForecasts.length >= 7) break;
     }
+
+    // Process hourly data if available
+    const hourlyData = hourlyForecastData.map((hour, index) => {
+      const hourDate = new Date(hour.startTime);
+      return {
+        id: `hour-${index}`,
+        time: hourDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        hour: hourDate.getHours(),
+        temperature: hour.temperature,
+        precipitation: {
+          chance: hour.probabilityOfPrecipitation?.value || 0,
+          type: getWeatherType(hour.shortForecast)
+        },
+        wind: {
+          speed: parseWindSpeed(hour.windSpeed),
+          direction: hour.windDirection || 'N'
+        },
+        icon: getNWSIconType(hour.icon, hour.shortForecast),
+        shortForecast: hour.shortForecast
+      };
+    });
     
     return {
       daily: dailyForecasts,
-      hourly: [], // NWS doesn't provide hourly in the basic forecast
+      hourly: hourlyData,
       historical: [],
       historicalRanges: [],
-      location: `${location.city}, ${location.state}`
+      location: `${location.city}, ${location.state}`,
+      metadata: {
+        gridId: properties.gridId,
+        gridX: properties.gridX,
+        gridY: properties.gridY,
+        forecastOffice: properties.forecastOffice,
+        timeZone: properties.timeZone
+      }
     };
   } catch (error) {
     if (error instanceof WeatherError) throw error;
@@ -239,14 +322,17 @@ async function fetchOpenWeatherData(location) {
         tempHigh: response.data.temperature,
         tempLow: response.data.temperature - 10, // Estimate for demo
         precipitation: { 
-          chance: response.data.humidity // Use humidity as precipitation chance for demo
+          chance: response.data.humidity, // Use humidity as precipitation chance for demo
+          type: getWeatherType(response.data.description)
         },
         uvIndex: 5, // Default UV value since API doesn't provide it
         wind: { 
           speed: response.data.windSpeed, 
           direction: 'NE' // Default direction since API doesn't provide it
         },
-        icon: getIconFromDescription(response.data.description)
+        icon: getIconFromDescription(response.data.description),
+        shortForecast: response.data.description,
+        detailedForecast: `Today will have a high of ${response.data.temperature}°F with ${response.data.description.toLowerCase()}.`
       }],
       hourly: [],
       historical: [],
@@ -287,6 +373,27 @@ export async function fetchRealWeatherData(location) {
   } else {
     return fetchOpenWeatherData(location);
   }
+}
+
+/**
+ * Determines the type of precipitation based on forecast text
+ * 
+ * @param {string} forecast - Short forecast text
+ * @returns {string} - Precipitation type (rain, snow, sleet, none)
+ */
+function getWeatherType(forecast = '') {
+  const text = forecast.toLowerCase();
+  
+  if (text.includes('snow') || text.includes('flurries')) {
+    return 'snow';
+  } else if (text.includes('sleet') || text.includes('ice') || text.includes('freezing')) {
+    return 'sleet';
+  } else if (text.includes('rain') || text.includes('shower') || text.includes('drizzle') || 
+             text.includes('thunderstorm') || text.includes('storm')) {
+    return 'rain';
+  }
+  
+  return 'none';
 }
 
 /**
