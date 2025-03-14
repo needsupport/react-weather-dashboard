@@ -14,7 +14,8 @@ import { configureServerApi, getServerConfig, updateConfig } from './weatherData
  */
 const ConfigurationPanel = ({ onConfigSaved, isVisible, onClose }) => {
   const [apiKey, setApiKey] = useState('');
-  const [apiUrl, setApiUrl] = useState('https://api.openweathermap.org/data/2.5/weather');
+  const [apiType, setApiType] = useState('nws'); // Default to NWS
+  const [apiUrl, setApiUrl] = useState('https://api.weather.gov');
   const [serverUrl, setServerUrl] = useState('http://localhost:3001');
   const [cacheDuration, setCacheDuration] = useState('10 minutes');
   const [isLoading, setIsLoading] = useState(false);
@@ -36,6 +37,7 @@ const ConfigurationPanel = ({ onConfigSaved, isVisible, onClose }) => {
       const config = await getServerConfig();
       
       if (config.apiUrl) setApiUrl(config.apiUrl);
+      if (config.apiType) setApiType(config.apiType);
       if (config.cacheDuration) setCacheDuration(config.cacheDuration);
       
       setSuccessMessage('Current configuration loaded');
@@ -57,6 +59,7 @@ const ConfigurationPanel = ({ onConfigSaved, isVisible, onClose }) => {
       // Update client-side configuration
       updateConfig({
         serverUrl,
+        apiType,
         apiUrl: '/api/weather'
       });
       
@@ -64,6 +67,7 @@ const ConfigurationPanel = ({ onConfigSaved, isVisible, onClose }) => {
       const result = await configureServerApi({
         apiKey,
         apiUrl,
+        apiType,
         cacheDuration
       });
       
@@ -73,6 +77,7 @@ const ConfigurationPanel = ({ onConfigSaved, isVisible, onClose }) => {
         onConfigSaved({
           serverUrl,
           apiUrl,
+          apiType,
           isConfigured: true
         });
       }
@@ -80,6 +85,16 @@ const ConfigurationPanel = ({ onConfigSaved, isVisible, onClose }) => {
       setErrorMessage('Failed to save configuration: ' + error.message);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Set the default URL based on the selected API type
+  const handleApiTypeChange = (type) => {
+    setApiType(type);
+    if (type === 'nws') {
+      setApiUrl('https://api.weather.gov');
+    } else {
+      setApiUrl('https://api.openweathermap.org/data/2.5/weather');
     }
   };
   
@@ -116,21 +131,53 @@ const ConfigurationPanel = ({ onConfigSaved, isVisible, onClose }) => {
         
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 mb-1">
-              OpenWeather API Key
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Weather API Service
             </label>
-            <input
-              id="apiKey"
-              type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Enter your API key"
-            />
-            <p className="mt-1 text-xs text-gray-500">
-              Get a key at <a href="https://openweathermap.org/api" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">OpenWeatherMap</a>
-            </p>
+            <div className="flex gap-4">
+              <label className="inline-flex items-center">
+                <input
+                  type="radio"
+                  name="apiType"
+                  value="nws"
+                  checked={apiType === 'nws'}
+                  onChange={() => handleApiTypeChange('nws')}
+                  className="form-radio h-4 w-4 text-blue-600"
+                />
+                <span className="ml-2">National Weather Service (NWS)</span>
+              </label>
+              <label className="inline-flex items-center">
+                <input
+                  type="radio"
+                  name="apiType"
+                  value="openweather"
+                  checked={apiType === 'openweather'}
+                  onChange={() => handleApiTypeChange('openweather')}
+                  className="form-radio h-4 w-4 text-blue-600"
+                />
+                <span className="ml-2">OpenWeather</span>
+              </label>
+            </div>
           </div>
+          
+          {apiType === 'openweather' && (
+            <div className="mb-4">
+              <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700 mb-1">
+                OpenWeather API Key
+              </label>
+              <input
+                id="apiKey"
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter your API key"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Get a key at <a href="https://openweathermap.org/api" target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">OpenWeatherMap</a>
+              </p>
+            </div>
+          )}
           
           <div className="mb-4">
             <label htmlFor="apiUrl" className="block text-sm font-medium text-gray-700 mb-1">
@@ -144,6 +191,11 @@ const ConfigurationPanel = ({ onConfigSaved, isVisible, onClose }) => {
               className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               placeholder="API URL"
             />
+            {apiType === 'nws' && (
+              <p className="mt-1 text-xs text-gray-500">
+                The National Weather Service API is free and does not require an API key.
+              </p>
+            )}
           </div>
           
           <div className="mb-4">
