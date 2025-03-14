@@ -1,16 +1,17 @@
 # React Weather Dashboard
 
-An interactive React weather dashboard with historical data visualization and statistical insights.
+An interactive React weather dashboard with support for multiple weather data providers including the National Weather Service (NWS) API and OpenWeather API.
 
 ## 🌦️ Features
 
-- Current weather conditions
-- Historical weather data comparison
-- Statistical analysis of weather patterns
+- Current weather conditions and forecasts
+- Support for both NWS and OpenWeather APIs
 - Temperature, precipitation, UV index, and wind metrics
+- Historical data comparison and visualization
 - Responsive design for all device sizes
 - Unit conversion (Fahrenheit/Celsius)
 - Geolocation support
+- Runtime API configuration
 
 ## 🚀 Setup Instructions
 
@@ -39,18 +40,11 @@ npm install
 cd ..
 ```
 
-4. Create environment variables:
+4. Create environment variables (optional - can be configured at runtime):
 ```bash
 # Copy the example file
 cp .env.example .env
 ```
-
-5. Add your OpenWeather API key to the `.env` file:
-```
-OPENWEATHER_API_KEY=your_api_key_here
-```
-
-> Get an API key at [OpenWeatherMap](https://openweathermap.org/api)
 
 ### Running the Application
 
@@ -67,6 +61,8 @@ npm start
 
 3. Open [http://localhost:3000](http://localhost:3000) in your browser
 
+4. Configure the API through the Settings button in the UI
+
 ## 📦 Project Structure
 
 ```
@@ -77,12 +73,13 @@ react-weather-dashboard/
 │   └── package.json       # Server dependencies
 ├── src/                   # Frontend source code
 │   ├── components/        # React components
-│   │   ├── WeatherCard.js      # Single day weather card
-│   │   ├── WeatherChart.js     # Weather data visualizations
-│   │   ├── WeatherDashboard.js # Main container component
-│   │   ├── WeatherHeader.js    # App header with controls
-│   │   ├── weatherDataUtils.js # API and data fetching utilities
-│   │   └── weatherUtils.js     # Weather calculation helpers
+│   │   ├── ConfigurationPanel.js  # API settings UI
+│   │   ├── WeatherCard.js        # Single day weather card
+│   │   ├── WeatherChart.js       # Weather data visualizations
+│   │   ├── WeatherDashboard.js   # Main container component
+│   │   ├── WeatherHeader.js      # App header with controls
+│   │   ├── weatherDataUtils.js   # API and data fetching utilities
+│   │   └── weatherUtils.js       # Weather calculation helpers
 │   ├── App.js             # Root component
 │   ├── index.js           # Application entry point
 │   └── ErrorBoundary.js   # Error handling component
@@ -100,6 +97,19 @@ Run specific tests:
 ```bash
 npm test -- --watch weatherUtils
 ```
+
+## 🔄 Supported Weather APIs
+
+### National Weather Service (NWS) API
+- Free and open API from the US government
+- No API key required
+- Provides detailed forecasts for US locations
+- Documentation: https://weather-gov.github.io/api/
+
+### OpenWeather API
+- Requires an API key (free tier available)
+- Global coverage
+- Documentation: https://openweathermap.org/api
 
 ## 🛠️ Technology Stack
 
@@ -123,7 +133,7 @@ The application uses a backend proxy server to secure API keys. Never expose API
 
 ### API Rate Limiting
 
-The OpenWeather API has rate limits. The backend implements caching and rate limiting to avoid exceeding these limits.
+Weather APIs have rate limits. The backend implements caching and rate limiting to avoid exceeding these limits.
 
 ### Performance Optimization
 
@@ -143,4 +153,4 @@ The app uses:
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License.
