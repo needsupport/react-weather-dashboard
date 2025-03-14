@@ -1,47 +1,108 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useReducer, useEffect, useCallback } from 'react';
+import PropTypes from 'prop-types';
 import WeatherHeader from './WeatherHeader';
 import WeatherCard from './WeatherCard';
 import WeatherChart from './WeatherChart';
 import { 
-  generateForecastData, 
-  generateHistoricalData, 
-  generateHistoricalRanges,
   fetchRealWeatherData
 } from './weatherDataUtils';
 
-const WeatherDashboard = () => {
-  const [metrics, setMetrics] = useState({
+/**
+ * Initial state for the reducer
+ */
+const initialState = {
+  metrics: { 
     temperature: true, 
     precipitation: true, 
     uvIndex: true, 
-    wind: true
-  });
-  const [viewMode, setViewMode] = useState('7-Day');
-  const [location, setLocation] = useState('');
-  const [geolocationError, setGeolocationError] = useState(null);
-
-  const [weatherData, setWeatherData] = useState({
+    wind: true 
+  },
+  viewMode: '7-Day',
+  location: 'Seattle', // Default location
+  geolocationError: null,
+  weatherData: {
     daily: [],
     hourly: [],
     historical: [],
     historicalRanges: []
-  });
-
-  const [uiState, setUiState] = useState({
+  },
+  ui: { 
     isLoading: true,
     isRefreshing: false,
     selectedDay: null,
     showDetails: false,
     error: null
-  });
-
-  const [preferences, setPreferences] = useState({
+  },
+  preferences: { 
     unit: 'F',
     showHistoricalRange: true,
     showAnomalies: true,
     showHistoricalAvg: true
-  });
+  }
+};
 
+/**
+ * Reducer function for managing weather dashboard state
+ * 
+ * @param {Object} state - Current state
+ * @param {Object} action - Action to perform
+ * @returns {Object} - New state
+ */
+function reducer(state, action) {
+  switch (action.type) {
+    case 'SET_LOCATION':
+      return { ...state, location: action.payload };
+    case 'SET_WEATHER_DATA':
+      return { ...state, weatherData: action.payload };
+    case 'SET_UI_STATE':
+      return { ...state, ui: { ...state.ui, ...action.payload } };
+    case 'SET_GEOLOCATION_ERROR':
+      return { ...state, geolocationError: action.payload };
+    case 'TOGGLE_METRIC':
+      return { 
+        ...state, 
+        metrics: { 
+          ...state.metrics, 
+          [action.payload]: !state.metrics[action.payload] 
+        } 
+      };
+    case 'SET_PREFERENCES':
+      return { ...state, preferences: { ...state.preferences, ...action.payload } };
+    case 'SET_VIEW_MODE':
+      return { ...state, viewMode: action.payload };
+    case 'SET_SELECTED_DAY':
+      return { 
+        ...state, 
+        ui: { 
+          ...state.ui, 
+          selectedDay: action.payload,
+          showDetails: action.payload !== null
+        } 
+      };
+    default:
+      return state;
+  }
+}
+
+/**
+ * WeatherDashboard - Main component for displaying weather information
+ * 
+ * @component
+ * @returns {JSX.Element}
+ */
+const WeatherDashboard = () => {
+  const [state, dispatch] = useReducer(reducer, initialState);
+  const { 
+    metrics, 
+    location, 
+    geolocationError, 
+    weatherData, 
+    ui, 
+    preferences,
+    viewMode
+  } = state;
+
+  // Fetch weather data when location changes
   useEffect(() => {
     let isMounted = true;
     const abortController = new AbortController();
@@ -49,19 +110,30 @@ const WeatherDashboard = () => {
     const fetchData = async () => {
       if (!isMounted) return;
       
+      // Show loading state
+      dispatch({ 
+        type: 'SET_UI_STATE', 
+        payload: { isLoading: true, error: null } 
+      });
+      
       try {
         const data = await fetchRealWeatherData(location);
         if (isMounted) {
-          setWeatherData(data);
-          setUiState(prev => ({ ...prev, isLoading: false }));
+          dispatch({ type: 'SET_WEATHER_DATA', payload: data });
+          dispatch({ 
+            type: 'SET_UI_STATE', 
+            payload: { isLoading: false } 
+          });
         }
       } catch (error) {
         if (isMounted) {
-          setUiState(prev => ({
-            ...prev, 
-            error: error.message,
-            isLoading: false
-          }));
+          dispatch({ 
+            type: 'SET_UI_STATE', 
+            payload: {
+              error: error.message,
+              isLoading: false
+            }
+          });
         }
       }
     };
@@ -74,28 +146,63 @@ const WeatherDashboard = () => {
     };
   }, [location]);
 
+  /**
+   * Handles geolocation request
+   */
   const handleGeolocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setGeolocationError('Geolocation not supported');
+      dispatch({ 
+        type: 'SET_GEOLOCATION_ERROR', 
+        payload: 'Geolocation not supported' 
+      });
       return;
     }
 
-    const controller = new AbortController();
+    // Show refreshing state
+    dispatch({ 
+      type: 'SET_UI_STATE', 
+      payload: { isRefreshing: true } 
+    });
+
+    const GEOLOCATION_TIMEOUT = 10000; // 10 seconds
     const timeoutId = setTimeout(() => {
-      controller.abort();
-      setGeolocationError('Geolocation request timed out');
-    }, 10000);
+      dispatch({ 
+        type: 'SET_GEOLOCATION_ERROR', 
+        payload: 'Geolocation request timed out' 
+      });
+      dispatch({ 
+        type: 'SET_UI_STATE', 
+        payload: { isRefreshing: false } 
+      });
+    }, GEOLOCATION_TIMEOUT);
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
         clearTimeout(timeoutId);
         const { latitude, longitude } = position.coords;
-        setLocation(`${latitude},${longitude}`);
-        setGeolocationError(null);
+        dispatch({ 
+          type: 'SET_LOCATION', 
+          payload: `${latitude},${longitude}` 
+        });
+        dispatch({ 
+          type: 'SET_GEOLOCATION_ERROR', 
+          payload: null 
+        });
+        dispatch({ 
+          type: 'SET_UI_STATE', 
+          payload: { isRefreshing: false } 
+        });
       },
       (error) => {
         clearTimeout(timeoutId);
-        setGeolocationError(`Geolocation error: ${error.message}`);
+        dispatch({ 
+          type: 'SET_GEOLOCATION_ERROR', 
+          payload: `Geolocation error: ${error.message}` 
+        });
+        dispatch({ 
+          type: 'SET_UI_STATE', 
+          payload: { isRefreshing: false } 
+        });
       },
       { 
         enableHighAccuracy: true, 
@@ -105,35 +212,145 @@ const WeatherDashboard = () => {
     );
   }, []);
 
-  const toggleMetric = (metric) => {
-    setMetrics(prev => ({
-      ...prev,
-      [metric]: !prev[metric]
-    }));
-  };
+  /**
+   * Toggles a metric display
+   * 
+   * @param {string} metric - Metric name to toggle
+   */
+  const toggleMetric = useCallback((metric) => {
+    dispatch({ type: 'TOGGLE_METRIC', payload: metric });
+  }, []);
+
+  /**
+   * Sets the temperature unit
+   * 
+   * @param {string} unit - Temperature unit ('F' or 'C')
+   */
+  const setUnit = useCallback((unit) => {
+    dispatch({ 
+      type: 'SET_PREFERENCES', 
+      payload: { unit } 
+    });
+  }, []);
+
+  /**
+   * Sets the currently selected day
+   * 
+   * @param {string} dayId - ID of the day to select
+   */
+  const setSelectedDay = useCallback((dayId) => {
+    dispatch({ type: 'SET_SELECTED_DAY', payload: dayId });
+  }, []);
+
+  /**
+   * Toggles detail view visibility
+   * 
+   * @param {boolean} show - Whether to show details
+   */
+  const setShowDetails = useCallback((show) => {
+    dispatch({ 
+      type: 'SET_UI_STATE', 
+      payload: { showDetails: show } 
+    });
+  }, []);
+
+  /**
+   * Changes the location
+   * 
+   * @param {string} newLocation - Location name or coordinates
+   */
+  const setLocation = useCallback((newLocation) => {
+    dispatch({ type: 'SET_LOCATION', payload: newLocation });
+  }, []);
+
+  /**
+   * Refreshes the weather data
+   */
+  const handleRefresh = useCallback(() => {
+    dispatch({ 
+      type: 'SET_UI_STATE', 
+      payload: { isRefreshing: true } 
+    });
+    
+    // Re-fetch data for current location
+    fetchRealWeatherData(location)
+      .then(data => {
+        dispatch({ type: 'SET_WEATHER_DATA', payload: data });
+        dispatch({ 
+          type: 'SET_UI_STATE', 
+          payload: { isRefreshing: false, error: null } 
+        });
+      })
+      .catch(error => {
+        dispatch({ 
+          type: 'SET_UI_STATE', 
+          payload: { 
+            isRefreshing: false,
+            error: error.message
+          } 
+        });
+      });
+  }, [location]);
 
   return (
-    <div className="weather-dashboard">
-      {uiState.error && (
-        <div className="error-message">
-          {uiState.error}
-          <button onClick={() => setUiState(prev => ({ ...prev, error: null }))}>Dismiss</button>
+    <div className="weather-dashboard p-4 max-w-6xl mx-auto">
+      {ui.error && (
+        <div className="error-message bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4 flex justify-between items-center">
+          <span>{ui.error}</span>
+          <button 
+            onClick={() => dispatch({ 
+              type: 'SET_UI_STATE', 
+              payload: { error: null } 
+            })}
+            className="bg-transparent text-red-700 font-semibold py-1 px-2 border border-red-500 rounded hover:bg-red-500 hover:text-white"
+          >
+            Dismiss
+          </button>
         </div>
       )}
 
-      {uiState.isLoading ? (
-        <div>Loading...</div>
+      {ui.isLoading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          <span className="ml-2">Loading weather data...</span>
+        </div>
       ) : (
         <>
           <WeatherHeader 
+            dailyData={weatherData.daily}
             location={location}
-            onGeolocationRequest={handleGeolocation}
-            geolocationError={geolocationError}
+            unit={preferences.unit}
+            handleRefresh={handleRefresh}
+            handleGeolocation={handleGeolocation}
+            isRefreshing={ui.isRefreshing}
+            setLocation={setLocation}
+            setUnit={setUnit}
+            useGeolocation={Boolean(geolocationError)}
           />
-          <WeatherChart 
-            data={weatherData.daily}
-            metrics={metrics}
-          />
+          
+          <div className="my-6">
+            <WeatherChart 
+              data={weatherData.daily}
+              metrics={metrics}
+            />
+          </div>
+          
+          {weatherData.daily && weatherData.daily.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-6">
+              {weatherData.daily.map(day => (
+                <WeatherCard
+                  key={day.id}
+                  day={day}
+                  historicalRange={weatherData.historicalRanges.find(hr => hr.dayId === day.id)}
+                  selectedDay={ui.selectedDay}
+                  setSelectedDay={setSelectedDay}
+                  setShowDetails={setShowDetails}
+                  unit={preferences.unit}
+                  metrics={metrics}
+                />
+              ))}
+            </div>
+          )}
         </>
       )}
     </div>
