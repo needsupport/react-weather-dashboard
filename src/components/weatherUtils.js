@@ -215,8 +215,24 @@ export const renderTrendIndicator = (value, unit = "") => {
 /**
  * Converts temperature between Fahrenheit and Celsius
  * 
- * @param {number} f - Temperature in Fahrenheit
+ * @param {number} temp - Temperature to convert
  * @param {string} unit - Target temperature unit ('F' or 'C')
  * @returns {number} Converted temperature
  */
-export const convertTemp = (f, unit) => unit === 'C' ? Math.round((f - 32) * 5 / 9) : f;
+export const convertTemp = (temp, unit) => {
+  if (!temp || isNaN(temp)) return 0;
+  
+  // Already in target unit
+  if ((unit === 'F' && temp > -50 && temp < 150) || 
+      (unit === 'C' && temp > -45 && temp < 65)) {
+    return Math.round(temp);
+  }
+  
+  // Convert F to C
+  if (unit === 'C') {
+    return Math.round((temp - 32) * 5 / 9);
+  }
+  
+  // Convert C to F
+  return Math.round((temp * 9 / 5) + 32);
+};
