@@ -15,18 +15,19 @@ class ErrorBoundary extends React.Component {
     super(props);
     this.state = { 
       hasError: false,
-      errorInfo: null
+      errorInfo: null,
+      error: null
     };
   }
 
   static getDerivedStateFromError(error) {
-    return { hasError: true };
+    return { hasError: true, error };
   }
 
   componentDidCatch(error, errorInfo) {
     // Log to error tracking service
     console.error('Uncaught error:', error, errorInfo);
-    this.setState({ errorInfo });
+    this.setState({ errorInfo, error });
     
     // Add actual error tracking service (e.g., Sentry)
     // if (window.Sentry) {
@@ -39,7 +40,8 @@ class ErrorBoundary extends React.Component {
       return (
         <div className="error-container p-4 border border-red-300 bg-red-50 rounded-lg my-4">
           <h2 className="text-xl font-bold text-red-700 mb-2">Something went wrong</h2>
-          <p className="mb-4">We've encountered an error. Please try:</p>
+          <p className="mb-2">We've encountered an error in the application.</p>
+          <p className="mb-4 text-red-800">{this.state.error?.message || 'Unknown error'}</p>
           <div className="flex gap-2">
             <button 
               onClick={() => window.location.reload()} 
