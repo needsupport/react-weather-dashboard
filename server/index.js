@@ -10,7 +10,9 @@ const cache = apicache.middleware;
 
 // Default config that can be overridden at runtime
 let CONFIG = {
-  WEATHER_API_URL: 'https://api.openweathermap.org/data/2.5/weather',
+  // Default to National Weather Service API
+  WEATHER_API_URL: 'https://api.weather.gov',
+  WEATHER_API_TYPE: 'nws', // 'nws' or 'openweather'
   WEATHER_API_KEY: process.env.OPENWEATHER_API_KEY || '',
   CACHE_DURATION: '10 minutes',
   RATE_LIMIT_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
@@ -23,10 +25,11 @@ app.use(express.json());
 
 // Endpoint to update configuration at runtime
 app.post('/api/config', (req, res) => {
-  const { apiUrl, apiKey, cacheDuration, rateLimitWindowMs, rateLimitMaxRequests } = req.body;
+  const { apiUrl, apiType, apiKey, cacheDuration, rateLimitWindowMs, rateLimitMaxRequests } = req.body;
   
   // Only update values that are provided
   if (apiUrl) CONFIG.WEATHER_API_URL = apiUrl;
+  if (apiType) CONFIG.WEATHER_API_TYPE = apiType;
   if (apiKey) CONFIG.WEATHER_API_KEY = apiKey;
   if (cacheDuration) CONFIG.CACHE_DURATION = cacheDuration;
   if (rateLimitWindowMs) CONFIG.RATE_LIMIT_WINDOW_MS = rateLimitWindowMs;
@@ -35,6 +38,7 @@ app.post('/api/config', (req, res) => {
   // Return current configuration (without the API key for security)
   res.json({
     apiUrl: CONFIG.WEATHER_API_URL,
+    apiType: CONFIG.WEATHER_API_TYPE,
     cacheDuration: CONFIG.CACHE_DURATION,
     rateLimitWindowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
     rateLimitMaxRequests: CONFIG.RATE_LIMIT_MAX_REQUESTS,
@@ -46,6 +50,7 @@ app.post('/api/config', (req, res) => {
 app.get('/api/config', (req, res) => {
   res.json({
     apiUrl: CONFIG.WEATHER_API_URL,
+    apiType: CONFIG.WEATHER_API_TYPE,
     cacheDuration: CONFIG.CACHE_DURATION,
     rateLimitWindowMs: CONFIG.RATE_LIMIT_WINDOW_MS,
     rateLimitMaxRequests: CONFIG.RATE_LIMIT_MAX_REQUESTS
@@ -59,12 +64,86 @@ const getLimiter = () => rateLimit({
   message: 'Too many requests, please try again later.'
 });
 
-// Weather API route with dynamic caching
+// NWS points endpoint (get grid information)
+app.get('/api/weather/points', cache(CONFIG.CACHE_DURATION), getLimiter(), async (req, res) => {
+  try {
+    const { latitude, longitude } = req.query;
+    
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'Latitude and longitude parameters are required' });
+    }
+
+    // Call NWS points endpoint
+    const response = await axios.get(`${CONFIG.WEATHER_API_URL}/points/${latitude},${longitude}`, {
+      headers: {
+        'User-Agent': 'react-weather-dashboard (your-email@example.com)', // Replace with your contact info
+        'Accept': 'application/geo+json'
+      },
+      timeout: 10000
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Weather API error:', error.message);
+    
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: `Weather service error: ${error.response.status}`,
+        message: error.response?.data?.detail || 'Unknown error'
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch weather data' });
+  }
+});
+
+// NWS forecast endpoint
+app.get('/api/weather/forecast', cache(CONFIG.CACHE_DURATION), getLimiter(), async (req, res) => {
+  try {
+    const { endpoint } = req.query;
+    
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Forecast endpoint parameter is required' });
+    }
+
+    // Call NWS forecast endpoint
+    const response = await axios.get(endpoint, {
+      headers: {
+        'User-Agent': 'react-weather-dashboard (your-email@example.com)', // Replace with your contact info
+        'Accept': 'application/geo+json'
+      },
+      timeout: 10000
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Weather API error:', error.message);
+    
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: `Weather service error: ${error.response.status}`,
+        message: error.response?.data?.detail || 'Unknown error'
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch weather data' });
+  }
+});
+
+// Legacy endpoint for OpenWeather API
 app.get('/api/weather', (req, res, next) => {
   // Apply dynamic cache configuration
   cache(CONFIG.CACHE_DURATION)(req, res, next);
 }, getLimiter(), async (req, res) => {
   try {
+    // If using NWS, redirect to the appropriate NWS endpoint
+    if (CONFIG.WEATHER_API_TYPE === 'nws') {
+      return res.status(400).json({ 
+        error: 'This endpoint is for OpenWeather API only',
+        message: 'Please use /api/weather/points and /api/weather/forecast for NWS API'
+      });
+    }
+    
     const location = req.query.location;
     
     if (!location) {
@@ -103,7 +182,7 @@ app.get('/api/weather', (req, res, next) => {
     }
 
     // Make request to configured Weather API
-    const response = await axios.get(CONFIG.WEATHER_API_URL, {
+    const response = await axios.get(`${CONFIG.WEATHER_API_URL}`, {
       params,
       timeout: 10000
     });
@@ -124,7 +203,7 @@ app.get('/api/weather', (req, res, next) => {
       // Forward API error messages
       return res.status(error.response.status).json({
         error: `Weather service error: ${error.response.status}`,
-        message: error.response.data.message || 'Unknown error'
+        message: error.response?.data?.message || 'Unknown error'
       });
     }
     
@@ -141,13 +220,15 @@ if (process.env.NODE_ENV === 'production') {
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok',
-    apiConfigured: Boolean(CONFIG.WEATHER_API_KEY)
+    apiUrl: CONFIG.WEATHER_API_URL,
+    apiType: CONFIG.WEATHER_API_TYPE
   });
 });
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
-  console.log(`API configured: ${Boolean(CONFIG.WEATHER_API_KEY)}`);
+  console.log(`API Type: ${CONFIG.WEATHER_API_TYPE}`);
+  console.log(`API URL: ${CONFIG.WEATHER_API_URL}`);
   console.log(`Visit http://localhost:${PORT}/health to check server status`);
 });
 
