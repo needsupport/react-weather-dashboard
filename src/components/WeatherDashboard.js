@@ -1,10 +1,10 @@
-import React, { useReducer, useEffect, useCallback } from 'react';
+import React, { useReducer, useEffect, useCallback, useState } from 'react';
 import PropTypes from 'prop-types';
 import WeatherHeader from './WeatherHeader';
 import WeatherCard from './WeatherCard';
 import WeatherChart from './WeatherChart';
 import ConfigurationPanel from './ConfigurationPanel';
-import { Settings } from 'lucide-react';
+import { Settings, MapPin } from 'lucide-react';
 import { 
   fetchRealWeatherData,
   getServerConfig
@@ -21,7 +21,10 @@ const initialState = {
     wind: true 
   },
   viewMode: '7-Day',
-  location: 'Seattle', // Default location
+  location: {
+    display: 'Seattle, WA', // Human-readable location
+    coords: '47.6062,-122.3321' // Lat,lon for NWS API
+  },
   geolocationError: null,
   weatherData: {
     daily: [],
@@ -46,7 +49,8 @@ const initialState = {
   config: {
     isConfigured: false,
     serverUrl: 'http://localhost:3001',
-    apiUrl: 'https://api.openweathermap.org/data/2.5/weather'
+    apiUrl: 'https://api.weather.gov',
+    apiType: 'nws'
   }
 };
 
@@ -96,6 +100,20 @@ function reducer(state, action) {
 }
 
 /**
+ * Common city coordinates for quick selection
+ */
+const CITY_COORDINATES = {
+  'Seattle, WA': '47.6062,-122.3321',
+  'Portland, OR': '45.5152,-122.6784',
+  'San Francisco, CA': '37.7749,-122.4194',
+  'Los Angeles, CA': '34.0522,-118.2437',
+  'New York, NY': '40.7128,-74.0060',
+  'Chicago, IL': '41.8781,-87.6298',
+  'Miami, FL': '25.7617,-80.1918',
+  'Denver, CO': '39.7392,-104.9903'
+};
+
+/**
  * WeatherDashboard - Main component for displaying weather information
  * 
  * @component
@@ -103,6 +121,7 @@ function reducer(state, action) {
  */
 const WeatherDashboard = () => {
   const [state, dispatch] = useReducer(reducer, initialState);
+  const [showLocationSelector, setShowLocationSelector] = useState(false);
   const { 
     metrics, 
     location, 
@@ -122,8 +141,9 @@ const WeatherDashboard = () => {
         dispatch({ 
           type: 'SET_CONFIG', 
           payload: { 
-            isConfigured: Boolean(serverConfig.apiUrl),
-            apiUrl: serverConfig.apiUrl
+            isConfigured: true,
+            apiUrl: serverConfig.apiUrl,
+            apiType: serverConfig.apiType
           } 
         });
       } catch (error) {
@@ -154,7 +174,18 @@ const WeatherDashboard = () => {
       });
       
       try {
-        const data = await fetchRealWeatherData(location);
+        // For NWS API, we need to use coordinates
+        const locationParam = config.apiType === 'nws' ? location.coords : location.display;
+        const data = await fetchRealWeatherData(locationParam);
+        
+        // If the API returns a location, update the display name
+        if (data.location) {
+          dispatch({ 
+            type: 'SET_LOCATION', 
+            payload: { ...location, display: data.location } 
+          });
+        }
+        
         if (isMounted) {
           dispatch({ type: 'SET_WEATHER_DATA', payload: data });
           dispatch({ 
@@ -184,7 +215,7 @@ const WeatherDashboard = () => {
       isMounted = false;
       abortController.abort();
     };
-  }, [location, config.isConfigured]);
+  }, [location.coords, config.isConfigured, config.apiType]);
 
   /**
    * Handles geolocation request
@@ -220,9 +251,13 @@ const WeatherDashboard = () => {
       (position) => {
         clearTimeout(timeoutId);
         const { latitude, longitude } = position.coords;
+        const coords = `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
         dispatch({ 
           type: 'SET_LOCATION', 
-          payload: `${latitude},${longitude}` 
+          payload: { 
+            coords: coords,
+            display: 'Your Location'
+          }
         });
         dispatch({ 
           type: 'SET_GEOLOCATION_ERROR', 
@@ -232,6 +267,7 @@ const WeatherDashboard = () => {
           type: 'SET_UI_STATE', 
           payload: { isRefreshing: false } 
         });
+        setShowLocationSelector(false);
       },
       (error) => {
         clearTimeout(timeoutId);
@@ -297,10 +333,18 @@ const WeatherDashboard = () => {
   /**
    * Changes the location
    * 
-   * @param {string} newLocation - Location name or coordinates
+   * @param {string} cityName - Display name of the city
+   * @param {string} coords - Coordinates of the city
    */
-  const setLocation = useCallback((newLocation) => {
-    dispatch({ type: 'SET_LOCATION', payload: newLocation });
+  const setLocation = useCallback((cityName, coords) => {
+    dispatch({ 
+      type: 'SET_LOCATION', 
+      payload: { 
+        display: cityName,
+        coords: coords || CITY_COORDINATES[cityName] || cityName
+      } 
+    });
+    setShowLocationSelector(false);
   }, []);
 
   /**
@@ -313,8 +357,18 @@ const WeatherDashboard = () => {
     });
     
     // Re-fetch data for current location
-    fetchRealWeatherData(location)
+    const locationParam = config.apiType === 'nws' ? location.coords : location.display;
+    
+    fetchRealWeatherData(locationParam)
       .then(data => {
+        // If the API returns a location, update the display name
+        if (data.location) {
+          dispatch({ 
+            type: 'SET_LOCATION', 
+            payload: { ...location, display: data.location } 
+          });
+        }
+        
         dispatch({ type: 'SET_WEATHER_DATA', payload: data });
         dispatch({ 
           type: 'SET_UI_STATE', 
@@ -330,7 +384,7 @@ const WeatherDashboard = () => {
           } 
         });
       });
-  }, [location]);
+  }, [location, config.apiType]);
 
   /**
    * Shows the configuration panel
@@ -408,18 +462,52 @@ const WeatherDashboard = () => {
         <>
           <div className="flex justify-between items-center mb-4">
             <h1 className="text-2xl font-bold">Weather Dashboard</h1>
-            <button
-              onClick={showConfigPanel}
-              className="bg-gray-100 text-gray-700 font-semibold py-1 px-3 border border-gray-300 rounded hover:bg-gray-200 flex items-center"
-            >
-              <Settings size={16} className="mr-2" />
-              Settings
-            </button>
+            <div className="flex gap-2">
+              <div className="relative">
+                <button
+                  onClick={() => setShowLocationSelector(!showLocationSelector)}
+                  className="bg-gray-100 text-gray-700 font-semibold py-1 px-3 border border-gray-300 rounded hover:bg-gray-200 flex items-center"
+                >
+                  <MapPin size={16} className="mr-2" />
+                  {location.display}
+                </button>
+                
+                {showLocationSelector && (
+                  <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-md border border-gray-200 p-1 z-10">
+                    <button 
+                      onClick={handleGeolocation}
+                      className="w-full text-left px-3 py-1.5 text-sm flex items-center rounded-md hover:bg-blue-50"
+                    >
+                      <MapPin size={14} className="mr-1 text-blue-500" />
+                      My Location
+                    </button>
+                    <div className="my-1 border-t border-gray-100"></div>
+                    {Object.keys(CITY_COORDINATES).map((city) => (
+                      <button 
+                        key={city}
+                        onClick={() => setLocation(city, CITY_COORDINATES[city])}
+                        className={`w-full text-left px-3 py-1.5 text-sm rounded-md hover:bg-blue-50 ${location.display === city ? 'font-medium text-blue-600' : ''}`}
+                      >
+                        {city}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <button
+                onClick={showConfigPanel}
+                className="bg-gray-100 text-gray-700 font-semibold py-1 px-3 border border-gray-300 rounded hover:bg-gray-200 flex items-center"
+              >
+                <Settings size={16} className="mr-2" />
+                Settings
+              </button>
+            </div>
           </div>
 
           <WeatherHeader 
             dailyData={weatherData.daily}
-            location={location}
+            location={location.display}
             unit={preferences.unit}
             handleRefresh={handleRefresh}
             handleGeolocation={handleGeolocation}
@@ -427,6 +515,7 @@ const WeatherDashboard = () => {
             setLocation={setLocation}
             setUnit={setUnit}
             useGeolocation={Boolean(geolocationError)}
+            apiType={config.apiType}
           />
           
           <div className="my-6">
@@ -437,7 +526,7 @@ const WeatherDashboard = () => {
           </div>
           
           {weatherData.daily && weatherData.daily.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 mt-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mt-6">
               {weatherData.daily.map(day => (
                 <WeatherCard
                   key={day.id}
