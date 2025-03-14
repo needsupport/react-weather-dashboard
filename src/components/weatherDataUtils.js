@@ -9,12 +9,81 @@ class WeatherError extends Error {
   }
 }
 
-const CONFIG = {
-  // Use relative URL that will be handled by proxy server
+// Default configuration
+let CONFIG = {
   API_URL: '/api/weather',
+  SERVER_URL: 'http://localhost:3001',
   TIMEOUT: 10000
 };
 
+/**
+ * Updates the API configuration
+ * 
+ * @param {Object} config - Configuration options
+ * @param {string} config.apiUrl - API endpoint path
+ * @param {string} config.serverUrl - Server base URL
+ * @param {number} config.timeout - Request timeout in ms
+ */
+export function updateConfig(config = {}) {
+  if (config.apiUrl) CONFIG.API_URL = config.apiUrl;
+  if (config.serverUrl) CONFIG.SERVER_URL = config.serverUrl;
+  if (config.timeout) CONFIG.TIMEOUT = config.timeout;
+}
+
+/**
+ * Configures the server API with the provided key and endpoint
+ * 
+ * @param {Object} config - Server configuration
+ * @param {string} config.apiKey - Weather API key
+ * @param {string} config.apiUrl - Weather API endpoint URL
+ * @returns {Promise<Object>} - Configuration result
+ */
+export async function configureServerApi(config = {}) {
+  try {
+    const response = await axios.post(`${CONFIG.SERVER_URL}/api/config`, {
+      apiKey: config.apiKey,
+      apiUrl: config.apiUrl,
+      cacheDuration: config.cacheDuration,
+      rateLimitWindowMs: config.rateLimitWindowMs,
+      rateLimitMaxRequests: config.rateLimitMaxRequests
+    });
+    
+    return response.data;
+  } catch (error) {
+    console.error('Failed to configure API:', error);
+    throw new WeatherError(
+      'Failed to configure API server', 
+      'CONFIG_ERROR',
+      { originalError: error.message }
+    );
+  }
+}
+
+/**
+ * Get current server configuration
+ * 
+ * @returns {Promise<Object>} - Current configuration
+ */
+export async function getServerConfig() {
+  try {
+    const response = await axios.get(`${CONFIG.SERVER_URL}/api/config`);
+    return response.data;
+  } catch (error) {
+    console.error('Failed to get configuration:', error);
+    throw new WeatherError(
+      'Failed to retrieve API configuration', 
+      'CONFIG_ERROR',
+      { originalError: error.message }
+    );
+  }
+}
+
+/**
+ * Fetches weather data for a location
+ * 
+ * @param {string} location - Location name or coordinates
+ * @returns {Promise<Object>} - Weather data object
+ */
 export async function fetchRealWeatherData(location) {
   if (!location) {
     throw new WeatherError('Location is required', 'INVALID_INPUT');
@@ -24,7 +93,7 @@ export async function fetchRealWeatherData(location) {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), CONFIG.TIMEOUT);
 
-    const response = await axios.get(CONFIG.API_URL, {
+    const response = await axios.get(`${CONFIG.SERVER_URL}${CONFIG.API_URL}`, {
       signal: controller.signal,
       params: {
         location: location
