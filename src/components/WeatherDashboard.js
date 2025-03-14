@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import WeatherHeader from './WeatherHeader';
 import WeatherCard from './WeatherCard';
 import WeatherChart from './WeatherChart';
+import AlertBanner from './AlertBanner';
 import ConfigurationPanel from './ConfigurationPanel';
 import { Settings, MapPin } from 'lucide-react';
 import { 
@@ -517,6 +518,15 @@ const WeatherDashboard = () => {
             useGeolocation={Boolean(geolocationError)}
             apiType={config.apiType}
           />
+          
+          {/* Weather alerts banner - only show for NWS API */}
+          {config.apiType === 'nws' && location.coords && (
+            <AlertBanner 
+              location={location.coords} 
+              autoRefresh={true}
+              refreshInterval={300000} // 5 minutes
+            />
+          )}
           
           <div className="my-6">
             <WeatherChart 
