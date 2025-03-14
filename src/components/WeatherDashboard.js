@@ -3,6 +3,7 @@ import PropTypes from 'prop-types';
 import WeatherHeader from './WeatherHeader';
 import WeatherCard from './WeatherCard';
 import WeatherChart from './WeatherChart';
+import ForecastDiscussion from './ForecastDiscussion';
 import ConfigurationPanel from './ConfigurationPanel';
 import { Settings, MapPin } from 'lucide-react';
 import { 
@@ -30,7 +31,8 @@ const initialState = {
     daily: [],
     hourly: [],
     historical: [],
-    historicalRanges: []
+    historicalRanges: [],
+    metadata: null
   },
   ui: { 
     isLoading: true,
@@ -554,6 +556,11 @@ const WeatherDashboard = () => {
                 Configure API
               </button>
             </div>
+          )}
+          
+          {/* Add Forecast Discussion component if using NWS API and metadata exists */}
+          {config.apiType === 'nws' && weatherData.metadata && weatherData.metadata.office && (
+            <ForecastDiscussion office={weatherData.metadata.office} />
           )}
         </>
       )}
