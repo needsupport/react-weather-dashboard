@@ -64,6 +64,28 @@ const getLimiter = () => rateLimit({
   message: 'Too many requests, please try again later.'
 });
 
+// NWS common request headers
+const getNWSHeaders = () => ({
+  'User-Agent': '(react-weather-dashboard, contact@example.com)', // Replace with your contact info
+  'Accept': 'application/geo+json'
+});
+
+// Helper to validate coordinates
+const validateCoordinates = (latitude, longitude) => {
+  const lat = parseFloat(latitude);
+  const lon = parseFloat(longitude);
+  
+  if (isNaN(lat) || isNaN(lon)) {
+    return false;
+  }
+  
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    return false;
+  }
+  
+  return true;
+};
+
 // NWS points endpoint (get grid information)
 app.get('/api/weather/points', cache(CONFIG.CACHE_DURATION), getLimiter(), async (req, res) => {
   try {
@@ -73,12 +95,13 @@ app.get('/api/weather/points', cache(CONFIG.CACHE_DURATION), getLimiter(), async
       return res.status(400).json({ error: 'Latitude and longitude parameters are required' });
     }
 
+    if (!validateCoordinates(latitude, longitude)) {
+      return res.status(400).json({ error: 'Invalid coordinates. Latitude must be between -90 and 90, longitude between -180 and 180.' });
+    }
+
     // Call NWS points endpoint
     const response = await axios.get(`${CONFIG.WEATHER_API_URL}/points/${latitude},${longitude}`, {
-      headers: {
-        'User-Agent': 'react-weather-dashboard (your-email@example.com)', // Replace with your contact info
-        'Accept': 'application/geo+json'
-      },
+      headers: getNWSHeaders(),
       timeout: 10000
     });
 
@@ -108,10 +131,7 @@ app.get('/api/weather/forecast', cache(CONFIG.CACHE_DURATION), getLimiter(), asy
 
     // Call NWS forecast endpoint
     const response = await axios.get(endpoint, {
-      headers: {
-        'User-Agent': 'react-weather-dashboard (your-email@example.com)', // Replace with your contact info
-        'Accept': 'application/geo+json'
-      },
+      headers: getNWSHeaders(),
       timeout: 10000
     });
 
@@ -127,6 +147,130 @@ app.get('/api/weather/forecast', cache(CONFIG.CACHE_DURATION), getLimiter(), asy
     }
     
     res.status(500).json({ error: 'Failed to fetch weather data' });
+  }
+});
+
+// NWS stations endpoint
+app.get('/api/weather/stations', cache(CONFIG.CACHE_DURATION), getLimiter(), async (req, res) => {
+  try {
+    const { endpoint } = req.query;
+    
+    if (!endpoint) {
+      return res.status(400).json({ error: 'Stations endpoint parameter is required' });
+    }
+
+    const response = await axios.get(endpoint, {
+      headers: getNWSHeaders(),
+      timeout: 10000
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Weather API error:', error.message);
+    
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: `Weather service error: ${error.response.status}`,
+        message: error.response?.data?.detail || 'Unknown error'
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch station data' });
+  }
+});
+
+// NWS station observations endpoint
+app.get('/api/weather/observations', cache(CONFIG.CACHE_DURATION), getLimiter(), async (req, res) => {
+  try {
+    const { stationId } = req.query;
+    
+    if (!stationId) {
+      return res.status(400).json({ error: 'Station ID parameter is required' });
+    }
+
+    const response = await axios.get(`${CONFIG.WEATHER_API_URL}/stations/${stationId}/observations/latest`, {
+      headers: getNWSHeaders(),
+      timeout: 10000
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Weather API error:', error.message);
+    
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: `Weather service error: ${error.response.status}`,
+        message: error.response?.data?.detail || 'Unknown error'
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch observation data' });
+  }
+});
+
+// NWS alerts endpoint
+app.get('/api/weather/alerts', cache('5 minutes'), getLimiter(), async (req, res) => {
+  try {
+    const { latitude, longitude } = req.query;
+    
+    if (!latitude || !longitude) {
+      return res.status(400).json({ error: 'Latitude and longitude parameters are required' });
+    }
+
+    if (!validateCoordinates(latitude, longitude)) {
+      return res.status(400).json({ error: 'Invalid coordinates' });
+    }
+
+    // Get active alerts for the point
+    const response = await axios.get(`${CONFIG.WEATHER_API_URL}/alerts/active`, {
+      params: {
+        point: `${latitude},${longitude}`
+      },
+      headers: getNWSHeaders(),
+      timeout: 10000
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Weather API error:', error.message);
+    
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: `Weather service error: ${error.response.status}`,
+        message: error.response?.data?.detail || 'Unknown error'
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch weather alerts' });
+  }
+});
+
+// NWS gridpoints endpoint for raw forecast data
+app.get('/api/weather/gridpoints', cache(CONFIG.CACHE_DURATION), getLimiter(), async (req, res) => {
+  try {
+    const { office, gridX, gridY } = req.query;
+    
+    if (!office || !gridX || !gridY) {
+      return res.status(400).json({ error: 'Office, gridX, and gridY parameters are required' });
+    }
+
+    const response = await axios.get(`${CONFIG.WEATHER_API_URL}/gridpoints/${office}/${gridX},${gridY}`, {
+      headers: getNWSHeaders(),
+      timeout: 10000
+    });
+
+    res.json(response.data);
+  } catch (error) {
+    console.error('Weather API error:', error.message);
+    
+    if (error.response) {
+      return res.status(error.response.status).json({
+        error: `Weather service error: ${error.response.status}`,
+        message: error.response?.data?.detail || 'Unknown error'
+      });
+    }
+    
+    res.status(500).json({ error: 'Failed to fetch gridpoint data' });
   }
 });
 
@@ -182,7 +326,7 @@ app.get('/api/weather', (req, res, next) => {
     }
 
     // Make request to configured Weather API
-    const response = await axios.get(`${CONFIG.WEATHER_API_URL}`, {
+    const response = await axios.get(`${CONFIG.WEATHER_API_URL}/data/2.5/weather`, {
       params,
       timeout: 10000
     });
