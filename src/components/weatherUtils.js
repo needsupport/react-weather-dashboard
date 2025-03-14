@@ -1,3 +1,19 @@
+/**
+ * Weather utilities for data processing and calculations
+ * @module weatherUtils
+ */
+
+// Constants for normalization factors
+export const TYPICAL_TEMPERATURE_RANGE = 10; // Typical temperature variation in degrees
+export const TYPICAL_PRECIPITATION_RANGE = 30; // Typical precipitation variation in percentage
+
+// Constants for similarity thresholds
+export const SIMILARITY_THRESHOLD = {
+  VERY_HIGH: 0.1,
+  HIGH: 0.2,
+  MODERATE: 0.3
+};
+
 // City data with historical averages and trends
 export const cityData = {
   'Seattle': { 
@@ -67,31 +83,72 @@ export const cityData = {
   }
 };
 
-// Helper function to calculate percentile
+/**
+ * Calculates the percentile rank of a value within a distribution
+ * 
+ * The function determines where a given value falls within a set of percentiles.
+ * It uses binary search to efficiently find the appropriate percentile bracket,
+ * then applies linear interpolation to estimate the exact percentile.
+ * 
+ * Example:
+ *   calculatePercentile(45, [20, 40, 60, 80]) would return 62.5, as 45 is 
+ *   25% of the way between the 50th percentile (40) and the 75th percentile (60)
+ * 
+ * Edge cases:
+ * - If value is below the lowest percentile: returns 0
+ * - If value is above the highest percentile: returns 100
+ * - If percentiles array is empty: returns 50 (default middle)
+ * 
+ * @param {number} value - The value to find the percentile for
+ * @param {number[]} percentiles - Array of values at specific percentile points
+ *                                (must be sorted in ascending order)
+ * @returns {number} - The estimated percentile (0-100)
+ */
 export const calculatePercentile = (value, percentiles) => {
   if (!percentiles || percentiles.length === 0) return 50;
   
-  // If value is less than the lowest percentile
   if (value < percentiles[0]) return 0;
-  
-  // If value is greater than the highest percentile
   if (value > percentiles[percentiles.length - 1]) return 100;
   
-  // Find where the value fits between percentiles
-  for (let i = 0; i < percentiles.length - 1; i++) {
-    if (value >= percentiles[i] && value <= percentiles[i + 1]) {
-      // Calculate the exact percentile using linear interpolation
+  // Binary search implementation
+  let left = 0;
+  let right = percentiles.length - 1;
+  
+  while (left <= right) {
+    const mid = Math.floor((left + right) / 2);
+    
+    if (percentiles[mid] <= value && (mid === percentiles.length - 1 || value <= percentiles[mid + 1])) {
+      // Found the range, now interpolate
       const percentileStep = 100 / (percentiles.length - 1);
-      const lowerPercentile = i * percentileStep;
-      const ratio = (value - percentiles[i]) / (percentiles[i + 1] - percentiles[i]);
+      const lowerPercentile = mid * percentileStep;
+      
+      if (mid === percentiles.length - 1) return 100;
+      
+      const ratio = (value - percentiles[mid]) / (percentiles[mid + 1] - percentiles[mid]);
       return Math.round(lowerPercentile + ratio * percentileStep);
+    }
+    
+    if (percentiles[mid] < value) {
+      left = mid + 1;
+    } else {
+      right = mid - 1;
     }
   }
   
   return 50; // Default fallback
 };
 
-// Helper function to find the most similar historical year
+/**
+ * Finds the most similar historical year based on temperature and precipitation
+ * 
+ * Calculates similarity scores between current conditions and historical data
+ * using normalized Euclidean distance.
+ * 
+ * @param {number} temp - Current temperature
+ * @param {number} precip - Current precipitation amount
+ * @param {Array<Object>} yearlyData - Array of historical yearly data objects
+ * @returns {Object} Object containing the most similar year and similarity rating
+ */
 export const findSimilarYear = (temp, precip, yearlyData) => {
   if (!yearlyData || yearlyData.length === 0) {
     return { year: null, similarity: "unknown" };
@@ -100,8 +157,8 @@ export const findSimilarYear = (temp, precip, yearlyData) => {
   // Calculate similarity score for each year (lower is better)
   const scoredYears = yearlyData.map(yearData => {
     // Calculate Euclidean distance (normalized)
-    const tempDiff = Math.abs(temp - yearData.temp) / 10; // Normalize by typical range
-    const precipDiff = Math.abs(precip - yearData.precip) / 30; // Normalize by typical range
+    const tempDiff = Math.abs(temp - yearData.temp) / TYPICAL_TEMPERATURE_RANGE;
+    const precipDiff = Math.abs(precip - yearData.precip) / TYPICAL_PRECIPITATION_RANGE;
     const score = Math.sqrt(tempDiff * tempDiff + precipDiff * precipDiff);
     
     return {
@@ -115,9 +172,9 @@ export const findSimilarYear = (temp, precip, yearlyData) => {
   
   // Determine similarity rating
   let similarity;
-  if (scoredYears[0].score < 0.1) similarity = "very high";
-  else if (scoredYears[0].score < 0.2) similarity = "high";
-  else if (scoredYears[0].score < 0.3) similarity = "moderate";
+  if (scoredYears[0].score < SIMILARITY_THRESHOLD.VERY_HIGH) similarity = "very high";
+  else if (scoredYears[0].score < SIMILARITY_THRESHOLD.HIGH) similarity = "high";
+  else if (scoredYears[0].score < SIMILARITY_THRESHOLD.MODERATE) similarity = "moderate";
   else similarity = "low";
   
   return {
@@ -126,7 +183,13 @@ export const findSimilarYear = (temp, precip, yearlyData) => {
   };
 };
 
-// Render trend indicator helper
+/**
+ * Creates a trend indicator object for UI display
+ * 
+ * @param {number|string} value - The trend value
+ * @param {string} unit - Unit of measurement
+ * @returns {Object} Object with direction, formatted value, and color class
+ */
 export const renderTrendIndicator = (value, unit = "") => {
   const numValue = parseFloat(value);
   if (numValue > 0) {
@@ -149,5 +212,11 @@ export const renderTrendIndicator = (value, unit = "") => {
   };
 };
 
-// Convert temperature between Fahrenheit and Celsius
+/**
+ * Converts temperature between Fahrenheit and Celsius
+ * 
+ * @param {number} f - Temperature in Fahrenheit
+ * @param {string} unit - Target temperature unit ('F' or 'C')
+ * @returns {number} Converted temperature
+ */
 export const convertTemp = (f, unit) => unit === 'C' ? Math.round((f - 32) * 5 / 9) : f;
