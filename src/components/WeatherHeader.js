@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Droplet, Thermometer, Sun, MapPin, RefreshCw, Navigation } from 'lucide-react';
 import { convertTemp } from './weatherUtils';
 import PropTypes from 'prop-types';
@@ -32,6 +32,20 @@ const WeatherHeader = ({
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  
+  // Close menu when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
   
   // Handle keyboard navigation
   const handleKeyDown = (e) => {
@@ -93,52 +107,54 @@ const WeatherHeader = ({
             <span>Change</span>
           </button>
           
-          <div 
-            ref={menuRef}
-            className={`${isMenuOpen ? '' : 'hidden'} absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-md border border-gray-200 p-1 z-10`} 
-            role="menu"
-          >
-            <button 
-              onClick={() => {
-                handleGeolocation();
-                setIsMenuOpen(false);
-              }}
-              disabled={useGeolocation}
-              className="w-full text-left px-3 py-1.5 text-sm flex items-center rounded-md hover:bg-blue-50"
-              role="menuitem"
-              aria-label="Use my location"
+          {isMenuOpen && (
+            <div 
+              ref={menuRef}
+              className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-md border border-gray-200 p-1 z-10" 
+              role="menu"
             >
-              <Navigation size={14} className={`mr-1 text-blue-500 ${useGeolocation ? 'animate-spin' : ''}`} />
-              <span>My Location</span>
-            </button>
-            
-            {['Seattle', 'Portland', 'San Francisco', 'Los Angeles'].map((city, index) => (
               <button 
-                key={city}
                 onClick={() => {
-                  setLocation(city);
+                  handleGeolocation();
                   setIsMenuOpen(false);
                 }}
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    const nextItem = menuRef.current.querySelectorAll('button')[index + 1];
-                    if (nextItem) nextItem.focus();
-                  } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    const prevItem = menuRef.current.querySelectorAll('button')[index - 1];
-                    if (prevItem) prevItem.focus();
-                  }
-                }}
-                className={`w-full text-left px-3 py-1.5 text-sm rounded-md hover:bg-blue-50 ${location === city ? 'font-medium text-blue-600' : ''}`}
+                disabled={useGeolocation}
+                className="w-full text-left px-3 py-1.5 text-sm flex items-center rounded-md hover:bg-blue-50"
                 role="menuitem"
-                aria-label={`Set location to ${city}`}
-                aria-current={location === city ? 'location' : undefined}
+                aria-label="Use my location"
               >
-                {city}
+                <Navigation size={14} className={`mr-1 text-blue-500 ${useGeolocation ? 'animate-spin' : ''}`} />
+                <span>My Location</span>
               </button>
-            ))}
-          </div>
+              
+              {['Seattle', 'Portland', 'San Francisco', 'Los Angeles'].map((city, index) => (
+                <button 
+                  key={city}
+                  onClick={() => {
+                    setLocation(city);
+                    setIsMenuOpen(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      const nextItem = menuRef.current.querySelectorAll('button')[index + 1];
+                      if (nextItem) nextItem.focus();
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      const prevItem = menuRef.current.querySelectorAll('button')[index - 1];
+                      if (prevItem) prevItem.focus();
+                    }
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-sm rounded-md hover:bg-blue-50 ${location === city ? 'font-medium text-blue-600' : ''}`}
+                  role="menuitem"
+                  aria-label={`Set location to ${city}`}
+                  aria-current={location === city ? 'location' : undefined}
+                >
+                  {city}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         
         <button
