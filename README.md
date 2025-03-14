@@ -83,6 +83,8 @@ react-weather-dashboard/
 │   ├── App.js             # Root component
 │   ├── index.js           # Application entry point
 │   └── ErrorBoundary.js   # Error handling component
+├── docs/                  # Documentation
+│   └── nws-api-reference.md  # NWS API reference
 └── package.json           # Frontend dependencies
 ```
 
@@ -104,12 +106,24 @@ npm test -- --watch weatherUtils
 - Free and open API from the US government
 - No API key required
 - Provides detailed forecasts for US locations
-- Documentation: https://weather-gov.github.io/api/
+- Documentation: [NWS API Reference](docs/nws-api-reference.md)
 
 ### OpenWeather API
 - Requires an API key (free tier available)
 - Global coverage
 - Documentation: https://openweathermap.org/api
+
+## NWS API Capabilities
+
+The National Weather Service API provides extensive weather data including:
+
+- **Data Types**: Current conditions, forecasts, alerts, hourly forecasts
+- **Parameters**: Temperature, precipitation, wind, humidity, pressure, and more
+- **Geographic Coverage**: United States and territories
+- **Resolution**: 2.5km grid resolution
+- **Update Frequency**: Hourly or better
+
+For complete details, see our [NWS API Reference](docs/nws-api-reference.md).
 
 ## 🛠️ Technology Stack
 
@@ -124,6 +138,14 @@ npm test -- --watch weatherUtils
   - axios for API calls
   - apicache for caching
   - express-rate-limit for rate limiting
+
+## 📱 iOS Development
+
+This web application can be adapted for iOS. See our [iOS adaptation guide](ios-adaptation.md) for:
+
+- UI/UX modifications for iOS
+- Native feature integration
+- Development approach options
 
 ## 📝 Development Notes
 
